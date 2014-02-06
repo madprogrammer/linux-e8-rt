@@ -22,7 +22,7 @@
 #include <plat/media.h>
 #include <plat/jpeg.h>
 #include <mach/media.h>
-#if defined(CONFIG_VIDEO_FIMC) || defined(CONFIG_CPU_FREQ) /* TODO: use existing dev */
+
 /* NAND Controller */
 #ifdef CONFIG_MTD_NAND
 static struct resource s3c_nand_resource[] = {
@@ -41,6 +41,7 @@ struct platform_device s3c_device_nand = {
 };
 #endif /* CONFIG_MTD_NAND */
 
+#if defined(CONFIG_VIDEO_FIMC)
 static struct resource s3c_fimc0_resource[] = {
 	[0] = {
 		.start	= S5P_PA_FIMC0,

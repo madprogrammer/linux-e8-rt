@@ -136,6 +136,7 @@ struct clk_should_be_running s5pv210_pd_audio_clk[] = {
 	},
 };
 
+#ifdef CONFIG_VIDEO_FIMC
 struct clk_should_be_running s5pv210_pd_cam_clk[] = {
 	{
 		.clk_name	= "fimc",
@@ -153,6 +154,7 @@ struct clk_should_be_running s5pv210_pd_cam_clk[] = {
 		/* end of the clock array */
 	},
 };
+#endif
 
 struct clk_should_be_running s5pv210_pd_tv_clk[] = {
 	{
@@ -213,6 +215,7 @@ static struct s5pv210_pd_config s5pv210_pd_audio_pdata = {
 	.ctrlbit = S5PV210_PD_AUDIO,
 };
 
+#ifdef CONFIG_VIDEO_FIMC
 static struct s5pv210_pd_config s5pv210_pd_cam_pdata = {
 	.supply_name = "pd_cam_supply",
 	.microvolts = 5000000,
@@ -220,7 +223,7 @@ static struct s5pv210_pd_config s5pv210_pd_cam_pdata = {
 	.clk_run = s5pv210_pd_cam_clk,
 	.ctrlbit = S5PV210_PD_CAM,
 };
-
+#endif
 
 static struct s5pv210_pd_config s5pv210_pd_tv_pdata = {
 	.supply_name = "pd_tv_supply",
@@ -262,7 +265,7 @@ struct platform_device s5pv210_pd_audio = {
 	},
 };
 
-
+#ifdef CONFIG_VIDEO_FIMC
 struct platform_device s5pv210_pd_cam = {
 	.name          = "reg-s5pv210-pd",
 	.id            = 1,
@@ -270,6 +273,7 @@ struct platform_device s5pv210_pd_cam = {
 		.platform_data = &s5pv210_pd_cam_pdata,
 	},
 };
+#endif
 
 struct platform_device s5pv210_pd_tv = {
 	.name          = "reg-s5pv210-pd",
