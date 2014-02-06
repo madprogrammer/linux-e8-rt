@@ -345,7 +345,7 @@ irqreturn_t s5p_sched_timer_interrupt(int irq, void *dev_id)
 
 struct irqaction s5p_systimer_irq = {
 	.name		= "System timer",
-	.flags		= IRQF_DISABLED ,
+	.flags		= IRQF_DISABLED | IRQF_NO_THREAD,
 	.handler	= s5p_sched_timer_interrupt,
 };
 
