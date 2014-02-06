@@ -208,6 +208,8 @@ static struct perf_event_attr wd_hw_attr = {
 	.disabled	= 1,
 };
 
+static DEFINE_RAW_SPINLOCK(watchdog_output_lock);
+
 /* Callback function for perf event subsystem */
 static void watchdog_overflow_callback(struct perf_event *event, int nmi,
 		 struct perf_sample_data *data,
@@ -234,10 +236,19 @@ static void watchdog_overflow_callback(struct perf_event *event, int nmi,
 		if (__this_cpu_read(hard_watchdog_warn) == true)
 			return;
 
-		if (hardlockup_panic)
+		/*
+		 * If early-printk is enabled then make sure we do not
+		 * lock up in printk() and kill console logging:
+		 */
+		printk_kill();
+
+		if (hardlockup_panic) {
 			panic("Watchdog detected hard LOCKUP on cpu %d", this_cpu);
-		else
+		} else {
+			raw_spin_lock(&watchdog_output_lock);
 			WARN(1, "Watchdog detected hard LOCKUP on cpu %d", this_cpu);
+			raw_spin_unlock(&watchdog_output_lock);
+		}
 
 		__this_cpu_write(hard_watchdog_warn, true);
 		return;
@@ -320,7 +331,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
  */
 static int watchdog(void *unused)
 {
-	static struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
 	struct hrtimer *hrtimer = &__raw_get_cpu_var(watchdog_hrtimer);
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
@@ -349,7 +360,8 @@ static int watchdog(void *unused)
 		set_current_state(TASK_INTERRUPTIBLE);
 	}
 	__set_current_state(TASK_RUNNING);
-
+	param.sched_priority = 0;
+	sched_setscheduler(current, SCHED_NORMAL, &param);
 	return 0;
 }
 
@@ -422,6 +434,7 @@ static void watchdog_prepare_cpu(int cpu)
 	WARN_ON(per_cpu(softlockup_watchdog, cpu));
 	hrtimer_init(hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	hrtimer->function = watchdog_timer_fn;
+	hrtimer->irqsafe = 1;
 }
 
 static int watchdog_enable(int cpu)

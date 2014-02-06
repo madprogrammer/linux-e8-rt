@@ -26,7 +26,7 @@
 #define CACHE_LINE_SIZE		32
 
 static void __iomem *l2x0_base;
-static DEFINE_SPINLOCK(l2x0_lock);
+static DEFINE_RAW_SPINLOCK(l2x0_lock);
 static uint32_t l2x0_way_mask;	/* Bitmask of active ways */
 static uint32_t l2x0_size;
 static u32 l2x0_cache_id;
@@ -125,9 +125,9 @@ static void l2x0_cache_sync(void)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&l2x0_lock, flags);
+	raw_spin_lock_irqsave(&l2x0_lock, flags);
 	cache_sync();
-	spin_unlock_irqrestore(&l2x0_lock, flags);
+	raw_spin_unlock_irqrestore(&l2x0_lock, flags);
 }
 
 #ifdef CONFIG_PL310_ERRATA_727915
@@ -168,9 +168,9 @@ static void l2x0_flush_all(void)
 #endif
 
 	/* clean all ways */
-	spin_lock_irqsave(&l2x0_lock, flags);
+	raw_spin_lock_irqsave(&l2x0_lock, flags);
 	__l2x0_flush_all();
-	spin_unlock_irqrestore(&l2x0_lock, flags);
+	raw_spin_unlock_irqrestore(&l2x0_lock, flags);
 }
 
 static void l2x0_clean_all(void)
@@ -185,13 +185,13 @@ static void l2x0_clean_all(void)
 #endif
 
 	/* clean all ways */
-	spin_lock_irqsave(&l2x0_lock, flags);
+	raw_spin_lock_irqsave(&l2x0_lock, flags);
 	debug_writel(0x03);
 	writel_relaxed(l2x0_way_mask, l2x0_base + L2X0_CLEAN_WAY);
 	cache_wait_way(l2x0_base + L2X0_CLEAN_WAY, l2x0_way_mask);
 	cache_sync();
 	debug_writel(0x00);
-	spin_unlock_irqrestore(&l2x0_lock, flags);
+	raw_spin_unlock_irqrestore(&l2x0_lock, flags);
 }
 
 static void l2x0_inv_all(void)

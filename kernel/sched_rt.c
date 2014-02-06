@@ -536,6 +536,9 @@ static int balance_runtime(struct rt_rq *rt_rq)
 {
 	int more = 0;
 
+	if (!sched_feat(RT_RUNTIME_SHARE))
+		return more;
+
 	if (rt_rq->rt_time > rt_rq->rt_runtime) {
 		raw_spin_unlock(&rt_rq->rt_runtime_lock);
 		more = do_balance_runtime(rt_rq);
@@ -553,11 +556,8 @@ static inline int balance_runtime(struct rt_rq *rt_rq)
 
 static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 {
-	int i, idle = 1;
+	int i, idle = 1, throttled = 0;
 	const struct cpumask *span;
-
-	if (!rt_bandwidth_enabled() || rt_b->rt_runtime == RUNTIME_INF)
-		return 1;
 
 	span = sched_rt_period_mask();
 	for_each_cpu(i, span) {
@@ -593,11 +593,16 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 			if (!rt_rq_throttled(rt_rq))
 				enqueue = 1;
 		}
+		if (rt_rq->rt_throttled)
+			throttled = 1;
 
 		if (enqueue)
 			sched_rt_rq_enqueue(rt_rq);
 		raw_spin_unlock(&rq->lock);
 	}
+
+	if (!throttled && (!rt_bandwidth_enabled() || rt_b->rt_runtime == RUNTIME_INF))
+		return 1;
 
 	return idle;
 }
@@ -630,7 +635,24 @@ static int sched_rt_runtime_exceeded(struct rt_rq *rt_rq)
 		return 0;
 
 	if (rt_rq->rt_time > runtime) {
-		rt_rq->rt_throttled = 1;
+		struct rt_bandwidth *rt_b = sched_rt_bandwidth(rt_rq);
+
+		/*
+		 * Don't actually throttle groups that have no runtime assigned
+		 * but accrue some time due to boosting.
+		 */
+		if (likely(rt_b->rt_runtime)) {
+			rt_rq->rt_throttled = 1;
+			printk_once(KERN_WARNING "sched: RT throttling activated\n");
+		} else {
+			/*
+			 * In case we did anyway, make it go away,
+			 * replenishment is a joke, since it will replenish us
+			 * with exactly 0 ns.
+			 */
+			rt_rq->rt_time = 0;
+		}
+
 		if (rt_rq_throttled(rt_rq)) {
 			sched_rt_rq_dequeue(rt_rq);
 			return 1;
@@ -658,7 +680,8 @@ static void update_curr_rt(struct rq *rq)
 	if (unlikely((s64)delta_exec < 0))
 		delta_exec = 0;
 
-	schedstat_set(curr->se.statistics.exec_max, max(curr->se.statistics.exec_max, delta_exec));
+	schedstat_set(curr->se.statistics.exec_max,
+		      max(curr->se.statistics.exec_max, delta_exec));
 
 	curr->se.sum_exec_runtime += delta_exec;
 	account_group_exec_runtime(curr, delta_exec);
@@ -1186,7 +1209,7 @@ static void deactivate_task(struct rq *rq, struct task_struct *p, int sleep);
 static int pick_rt_task(struct rq *rq, struct task_struct *p, int cpu)
 {
 	if (!task_running(rq, p) &&
-	    (cpu < 0 || cpumask_test_cpu(cpu, &p->cpus_allowed)) &&
+	    (cpu < 0 || cpumask_test_cpu(cpu, tsk_cpus_allowed(p))) &&
 	    (p->rt.nr_cpus_allowed > 1))
 		return 1;
 	return 0;
@@ -1331,7 +1354,7 @@ static struct rq *find_lock_lowest_rq(struct task_struct *task, struct rq *rq)
 			 */
 			if (unlikely(task_rq(task) != rq ||
 				     !cpumask_test_cpu(lowest_rq->cpu,
-						       &task->cpus_allowed) ||
+						       tsk_cpus_allowed(task)) ||
 				     task_running(rq, task) ||
 				     !task->on_rq)) {
 
@@ -1614,9 +1637,6 @@ static void set_cpus_allowed_rt(struct task_struct *p,
 
 		update_rt_migration(&rq->rt);
 	}
-
-	cpumask_copy(&p->cpus_allowed, new_mask);
-	p->rt.nr_cpus_allowed = weight;
 }
 
 /* Assumes rq->lock is held */

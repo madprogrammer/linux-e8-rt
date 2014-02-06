@@ -2859,10 +2859,7 @@ static int mark_lock(struct task_struct *curr, struct held_lock *this,
 void lockdep_init_map(struct lockdep_map *lock, const char *name,
 		      struct lock_class_key *key, int subclass)
 {
-	int i;
-
-	for (i = 0; i < NR_LOCKDEP_CACHING_CLASSES; i++)
-		lock->class_cache[i] = NULL;
+	memset(lock, 0, sizeof(*lock));
 
 #ifdef CONFIG_LOCK_STAT
 	lock->cpu = raw_smp_processor_id();
@@ -3341,6 +3338,7 @@ static void check_flags(unsigned long flags)
 		}
 	}
 
+#ifndef CONFIG_PREEMPT_RT_FULL
 	/*
 	 * We dont accurately track softirq state in e.g.
 	 * hardirq contexts (such as on 4KSTACKS), so only
@@ -3352,6 +3350,7 @@ static void check_flags(unsigned long flags)
 		else
 			DEBUG_LOCKS_WARN_ON(!current->softirqs_enabled);
 	}
+#endif
 
 	if (!debug_locks)
 		print_irqtrace_events(current);

@@ -341,7 +341,7 @@ unsigned long trace_flags = TRACE_ITER_PRINT_PARENT | TRACE_ITER_PRINTK |
 	TRACE_ITER_GRAPH_TIME | TRACE_ITER_RECORD_CMD | TRACE_ITER_OVERWRITE;
 
 static int trace_stop_count;
-static DEFINE_SPINLOCK(tracing_start_lock);
+static DEFINE_RAW_SPINLOCK(tracing_start_lock);
 
 /**
  * trace_wake_up - wake up tasks waiting for trace input
@@ -351,6 +351,7 @@ static DEFINE_SPINLOCK(tracing_start_lock);
  */
 void trace_wake_up(void)
 {
+#ifndef CONFIG_PREEMPT_RT_FULL
 	int cpu;
 
 	if (trace_flags & TRACE_ITER_BLOCK)
@@ -363,6 +364,7 @@ void trace_wake_up(void)
 	if (!runqueue_is_locked(cpu))
 		wake_up(&trace_wait);
 	put_cpu();
+#endif
 }
 
 static int __init set_buf_size(char *str)
@@ -716,6 +718,12 @@ update_max_tr_single(struct trace_array *tr, struct task_struct *tsk, int cpu)
 }
 #endif /* CONFIG_TRACER_MAX_TRACE */
 
+#ifndef CONFIG_PREEMPT_RT_FULL
+static void default_wait_pipe(struct trace_iterator *iter);
+#else
+#define default_wait_pipe	poll_wait_pipe
+#endif
+
 /**
  * register_tracer - register a tracer with the ftrace system.
  * @type - the plugin for the tracer
@@ -958,7 +966,7 @@ void tracing_start(void)
 	if (tracing_disabled)
 		return;
 
-	spin_lock_irqsave(&tracing_start_lock, flags);
+	raw_spin_lock_irqsave(&tracing_start_lock, flags);
 	if (--trace_stop_count) {
 		if (trace_stop_count < 0) {
 			/* Someone screwed up their debugging */
@@ -983,7 +991,7 @@ void tracing_start(void)
 
 	ftrace_start();
  out:
-	spin_unlock_irqrestore(&tracing_start_lock, flags);
+	raw_spin_unlock_irqrestore(&tracing_start_lock, flags);
 }
 
 /**
@@ -998,7 +1006,7 @@ void tracing_stop(void)
 	unsigned long flags;
 
 	ftrace_stop();
-	spin_lock_irqsave(&tracing_start_lock, flags);
+	raw_spin_lock_irqsave(&tracing_start_lock, flags);
 	if (trace_stop_count++)
 		goto out;
 
@@ -1016,7 +1024,7 @@ void tracing_stop(void)
 	arch_spin_unlock(&ftrace_max_lock);
 
  out:
-	spin_unlock_irqrestore(&tracing_start_lock, flags);
+	raw_spin_unlock_irqrestore(&tracing_start_lock, flags);
 }
 
 void trace_stop_cmdline_recording(void);
@@ -1120,6 +1128,8 @@ tracing_generic_entry_update(struct trace_entry *entry, unsigned long flags,
 		((pc & HARDIRQ_MASK) ? TRACE_FLAG_HARDIRQ : 0) |
 		((pc & SOFTIRQ_MASK) ? TRACE_FLAG_SOFTIRQ : 0) |
 		(need_resched() ? TRACE_FLAG_NEED_RESCHED : 0);
+
+	entry->migrate_disable	= (tsk) ? __migrate_disabled(tsk) & 0xFF : 0;
 }
 EXPORT_SYMBOL_GPL(tracing_generic_entry_update);
 
@@ -1757,9 +1767,10 @@ static void print_lat_help_header(struct seq_file *m)
 	seq_puts(m, "#                | / _----=> need-resched    \n");
 	seq_puts(m, "#                || / _---=> hardirq/softirq \n");
 	seq_puts(m, "#                ||| / _--=> preempt-depth   \n");
-	seq_puts(m, "#                |||| /     delay             \n");
-	seq_puts(m, "#  cmd     pid   ||||| time  |   caller      \n");
-	seq_puts(m, "#     \\   /      |||||  \\    |   /           \n");
+	seq_puts(m, "#                |||| / _--=> migrate-disable\n");
+	seq_puts(m, "#                ||||| /     delay           \n");
+	seq_puts(m, "#  cmd     pid   |||||| time  |   caller     \n");
+	seq_puts(m, "#     \\   /      |||||  \\   |   /          \n");
 }
 
 static void print_func_help_header(struct seq_file *m)
@@ -3067,6 +3078,7 @@ static int tracing_release_pipe(struct inode *inode, struct file *file)
 	return 0;
 }
 
+#ifndef CONFIG_PREEMPT_RT_FULL
 static unsigned int
 tracing_poll_pipe(struct file *filp, poll_table *poll_table)
 {
@@ -3088,8 +3100,7 @@ tracing_poll_pipe(struct file *filp, poll_table *poll_table)
 	}
 }
 
-
-void default_wait_pipe(struct trace_iterator *iter)
+static void default_wait_pipe(struct trace_iterator *iter)
 {
 	DEFINE_WAIT(wait);
 
@@ -3100,6 +3111,20 @@ void default_wait_pipe(struct trace_iterator *iter)
 
 	finish_wait(&trace_wait, &wait);
 }
+#else
+static unsigned int
+tracing_poll_pipe(struct file *filp, poll_table *poll_table)
+{
+	struct trace_iterator *iter = filp->private_data;
+
+	if ((trace_flags & TRACE_ITER_BLOCK) || !trace_empty(iter))
+		return POLLIN | POLLRDNORM;
+	poll_wait_pipe(iter);
+	if (!trace_empty(iter))
+		return POLLIN | POLLRDNORM;
+	return 0;
+}
+#endif
 
 /*
  * This is a make-shift waitqueue.

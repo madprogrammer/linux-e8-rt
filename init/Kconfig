@@ -401,7 +401,7 @@ config TREE_PREEMPT_RCU
 
 config TINY_RCU
 	bool "UP-only small-memory-footprint RCU"
-	depends on !SMP
+	depends on !SMP && !PREEMPT_RT_FULL
 	help
 	  This option selects the RCU implementation that is
 	  designed for UP systems from which real-time response
@@ -410,7 +410,7 @@ config TINY_RCU
 
 config TINY_PREEMPT_RCU
 	bool "Preemptible UP-only small-memory-footprint RCU"
-	depends on !SMP && PREEMPT
+	depends on !SMP && PREEMPT && !PREEMPT_RT_FULL
 	help
 	  This option selects the RCU implementation that is designed
 	  for real-time UP systems.  This option greatly reduces the
@@ -1235,6 +1235,7 @@ config SLAB
 
 config SLUB
 	bool "SLUB (Unqueued Allocator)"
+	depends on !PREEMPT_RT_FULL
 	help
 	   SLUB is a slab allocator that minimizes cache line usage
 	   instead of managing queues of cached objects (SLAB approach).
@@ -1246,6 +1247,7 @@ config SLUB
 config SLOB
 	depends on EXPERT
 	bool "SLOB (Simple Allocator)"
+	depends on !PREEMPT_RT_FULL
 	help
 	   SLOB replaces the stock allocator with a drastically simpler
 	   allocator. SLOB is generally more space efficient but

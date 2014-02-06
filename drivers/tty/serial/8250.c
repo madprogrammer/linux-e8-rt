@@ -38,6 +38,7 @@
 #include <linux/nmi.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/kdb.h>
 
 #include <asm/io.h>
 #include <asm/irq.h>
@@ -1678,12 +1679,14 @@ static irqreturn_t serial8250_interrupt(int irq, void *dev_id)
 
 		l = l->next;
 
+#ifndef CONFIG_PREEMPT_RT_FULL
 		if (l == i->head && pass_counter++ > PASS_LIMIT) {
 			/* If we hit this, we're dead. */
 			printk_ratelimited(KERN_ERR
 				"serial8250: too much work for irq%d\n", irq);
 			break;
 		}
+#endif
 	} while (l != end);
 
 	spin_unlock(&i->lock);
@@ -2894,14 +2897,14 @@ serial8250_console_write(struct console *co, const char *s, unsigned int count)
 
 	touch_nmi_watchdog();
 
-	local_irq_save(flags);
-	if (up->port.sysrq) {
-		/* serial8250_handle_port() already took the lock */
+	if (unlikely(in_kdb_printk())) {
 		locked = 0;
-	} else if (oops_in_progress) {
-		locked = spin_trylock(&up->port.lock);
-	} else
-		spin_lock(&up->port.lock);
+	} else {
+		if (up->port.sysrq || oops_in_progress)
+			locked = spin_trylock_irqsave(&up->port.lock, flags);
+		else
+			spin_lock_irqsave(&up->port.lock, flags);
+	}
 
 	/*
 	 *	First save the IER then disable the interrupts
@@ -2933,8 +2936,7 @@ serial8250_console_write(struct console *co, const char *s, unsigned int count)
 		check_modem_status(up);
 
 	if (locked)
-		spin_unlock(&up->port.lock);
-	local_irq_restore(flags);
+		spin_unlock_irqrestore(&up->port.lock, flags);
 }
 
 static int __init serial8250_console_setup(struct console *co, char *options)
