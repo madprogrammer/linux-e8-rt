@@ -6,8 +6,6 @@ Some of the precompiled modules (having *.module extension) which
 were shipped with the original (non-RT) kernel will fail to link
 into the RT-kernel. Following modules are known to fail linking:
 
-- sound/soc/samsung/snd-soc-wm8960.module
-- sound/soc/samsung/snd-soc-s5pv210-wm8960-e8.module
 - drivers/input/touchscreen/gx801.module
 - drivers/input/touchscreen/gt811.module
 - drivers/media/video/samsung/fimc/ov3640.module
