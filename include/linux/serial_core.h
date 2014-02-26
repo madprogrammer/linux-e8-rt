@@ -293,7 +293,7 @@ struct uart_icount {
 typedef unsigned int __bitwise__ upf_t;
 
 struct uart_port {
-	spinlock_t		lock;			/* port lock */
+	raw_spinlock_t		lock;			/* port lock */
 	unsigned long		iobase;			/* in/out[bwl] */
 	unsigned char __iomem	*membase;		/* read/write[bwl] */
 	unsigned int		(*serial_in)(struct uart_port *, int);
