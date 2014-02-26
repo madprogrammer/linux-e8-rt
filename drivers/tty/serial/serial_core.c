@@ -81,9 +81,9 @@ static void uart_stop(struct tty_struct *tty)
 	struct uart_port *port = state->uart_port;
 	unsigned long flags;
 
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 	port->ops->stop_tx(port);
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void __uart_start(struct tty_struct *tty)
@@ -105,9 +105,9 @@ static void uart_start(struct tty_struct *tty)
 	struct uart_port *port = state->uart_port;
 	unsigned long flags;
 
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 	__uart_start(tty);
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void uart_tasklet_action(unsigned long data)
@@ -122,12 +122,12 @@ uart_update_mctrl(struct uart_port *port, unsigned int set, unsigned int clear)
 	unsigned long flags;
 	unsigned int old;
 
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 	old = port->mctrl;
 	port->mctrl = (old & ~clear) | set;
 	if (old != port->mctrl)
 		port->ops->set_mctrl(port, port->mctrl);
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
 #define uart_set_mctrl(port, set)	uart_update_mctrl(port, set, 0)
@@ -192,10 +192,10 @@ static int uart_startup(struct tty_struct *tty, struct uart_state *state, int in
 		}
 
 		if (port->flags & ASYNC_CTS_FLOW) {
-			spin_lock_irq(&uport->lock);
+			raw_spin_lock_irq(&uport->lock);
 			if (!(uport->ops->get_mctrl(uport) & TIOCM_CTS))
 				tty->hw_stopped = 1;
-			spin_unlock_irq(&uport->lock);
+			raw_spin_unlock_irq(&uport->lock);
 		}
 
 		set_bit(ASYNCB_INITIALIZED, &port->flags);
@@ -474,13 +474,13 @@ static inline int __uart_put_char(struct uart_port *port,
 	if (!circ->buf)
 		return 0;
 
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 	if (uart_circ_chars_free(circ) != 0) {
 		circ->buf[circ->head] = c;
 		circ->head = (circ->head + 1) & (UART_XMIT_SIZE - 1);
 		ret = 1;
 	}
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 	return ret;
 }
 
@@ -520,7 +520,7 @@ static int uart_write(struct tty_struct *tty,
 	if (!circ->buf)
 		return 0;
 
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 	while (1) {
 		c = CIRC_SPACE_TO_END(circ->head, circ->tail, UART_XMIT_SIZE);
 		if (count < c)
@@ -533,7 +533,7 @@ static int uart_write(struct tty_struct *tty,
 		count -= c;
 		ret += c;
 	}
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 
 	uart_start(tty);
 	return ret;
@@ -545,9 +545,9 @@ static int uart_write_room(struct tty_struct *tty)
 	unsigned long flags;
 	int ret;
 
-	spin_lock_irqsave(&state->uart_port->lock, flags);
+	raw_spin_lock_irqsave(&state->uart_port->lock, flags);
 	ret = uart_circ_chars_free(&state->xmit);
-	spin_unlock_irqrestore(&state->uart_port->lock, flags);
+	raw_spin_unlock_irqrestore(&state->uart_port->lock, flags);
 	return ret;
 }
 
@@ -557,9 +557,9 @@ static int uart_chars_in_buffer(struct tty_struct *tty)
 	unsigned long flags;
 	int ret;
 
-	spin_lock_irqsave(&state->uart_port->lock, flags);
+	raw_spin_lock_irqsave(&state->uart_port->lock, flags);
 	ret = uart_circ_chars_pending(&state->xmit);
-	spin_unlock_irqrestore(&state->uart_port->lock, flags);
+	raw_spin_unlock_irqrestore(&state->uart_port->lock, flags);
 	return ret;
 }
 
@@ -581,11 +581,11 @@ static void uart_flush_buffer(struct tty_struct *tty)
 	port = state->uart_port;
 	pr_debug("uart_flush_buffer(%d) called\n", tty->index);
 
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 	uart_circ_clear(&state->xmit);
 	if (port->ops->flush_buffer)
 		port->ops->flush_buffer(port);
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 	tty_wakeup(tty);
 }
 
@@ -604,9 +604,9 @@ static void uart_send_xchar(struct tty_struct *tty, char ch)
 	else {
 		port->x_char = ch;
 		if (ch) {
-			spin_lock_irqsave(&port->lock, flags);
+			raw_spin_lock_irqsave(&port->lock, flags);
 			port->ops->start_tx(port);
-			spin_unlock_irqrestore(&port->lock, flags);
+			raw_spin_unlock_irqrestore(&port->lock, flags);
 		}
 	}
 }
@@ -920,9 +920,9 @@ static int uart_tiocmget(struct tty_struct *tty)
 	mutex_lock(&port->mutex);
 	if (!(tty->flags & (1 << TTY_IO_ERROR))) {
 		result = uport->mctrl;
-		spin_lock_irq(&uport->lock);
+		raw_spin_lock_irq(&uport->lock);
 		result |= uport->ops->get_mctrl(uport);
-		spin_unlock_irq(&uport->lock);
+		raw_spin_unlock_irq(&uport->lock);
 	}
 	mutex_unlock(&port->mutex);
 
@@ -1026,20 +1026,20 @@ uart_wait_modem_status(struct uart_state *state, unsigned long arg)
 	/*
 	 * note the counters on entry
 	 */
-	spin_lock_irq(&uport->lock);
+	raw_spin_lock_irq(&uport->lock);
 	memcpy(&cprev, &uport->icount, sizeof(struct uart_icount));
 
 	/*
 	 * Force modem status interrupts on
 	 */
 	uport->ops->enable_ms(uport);
-	spin_unlock_irq(&uport->lock);
+	raw_spin_unlock_irq(&uport->lock);
 
 	add_wait_queue(&port->delta_msr_wait, &wait);
 	for (;;) {
-		spin_lock_irq(&uport->lock);
+		raw_spin_lock_irq(&uport->lock);
 		memcpy(&cnow, &uport->icount, sizeof(struct uart_icount));
-		spin_unlock_irq(&uport->lock);
+		raw_spin_unlock_irq(&uport->lock);
 
 		set_current_state(TASK_INTERRUPTIBLE);
 
@@ -1081,9 +1081,9 @@ static int uart_get_icount(struct tty_struct *tty,
 	struct uart_icount cnow;
 	struct uart_port *uport = state->uart_port;
 
-	spin_lock_irq(&uport->lock);
+	raw_spin_lock_irq(&uport->lock);
 	memcpy(&cnow, &uport->icount, sizeof(struct uart_icount));
-	spin_unlock_irq(&uport->lock);
+	raw_spin_unlock_irq(&uport->lock);
 
 	icount->cts         = cnow.cts;
 	icount->dsr         = cnow.dsr;
@@ -1101,7 +1101,7 @@ static int uart_get_icount(struct tty_struct *tty,
 }
 
 /*
- * Called via sys_ioctl.  We can use spin_lock_irq() here.
+ * Called via sys_ioctl.  We can use raw_spin_lock_irq() here.
  */
 static int
 uart_ioctl(struct tty_struct *tty, unsigned int cmd,
@@ -1231,19 +1231,19 @@ static void uart_set_termios(struct tty_struct *tty,
 
 	/* Handle turning off CRTSCTS */
 	if ((old_termios->c_cflag & CRTSCTS) && !(cflag & CRTSCTS)) {
-		spin_lock_irqsave(&state->uart_port->lock, flags);
+		raw_spin_lock_irqsave(&state->uart_port->lock, flags);
 		tty->hw_stopped = 0;
 		__uart_start(tty);
-		spin_unlock_irqrestore(&state->uart_port->lock, flags);
+		raw_spin_unlock_irqrestore(&state->uart_port->lock, flags);
 	}
 	/* Handle turning on CRTSCTS */
 	else if (!(old_termios->c_cflag & CRTSCTS) && (cflag & CRTSCTS)) {
-		spin_lock_irqsave(&state->uart_port->lock, flags);
+		raw_spin_lock_irqsave(&state->uart_port->lock, flags);
 		if (!(state->uart_port->ops->get_mctrl(state->uart_port) & TIOCM_CTS)) {
 			tty->hw_stopped = 1;
 			state->uart_port->ops->stop_tx(state->uart_port);
 		}
-		spin_unlock_irqrestore(&state->uart_port->lock, flags);
+		raw_spin_unlock_irqrestore(&state->uart_port->lock, flags);
 	}
 }
 
@@ -1270,10 +1270,10 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 	pr_debug("uart_close(%d) called\n", uport->line);
 
 	mutex_lock(&port->mutex);
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 
 	if (tty_hung_up_p(filp)) {
-		spin_unlock_irqrestore(&port->lock, flags);
+		raw_spin_unlock_irqrestore(&port->lock, flags);
 		goto done;
 	}
 
@@ -1295,7 +1295,7 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 		port->count = 0;
 	}
 	if (port->count) {
-		spin_unlock_irqrestore(&port->lock, flags);
+		raw_spin_unlock_irqrestore(&port->lock, flags);
 		goto done;
 	}
 
@@ -1305,7 +1305,7 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 	 * setting tty->closing.
 	 */
 	tty->closing = 1;
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 
 	if (port->closing_wait != ASYNC_CLOSING_WAIT_NONE) {
 		/*
@@ -1324,9 +1324,9 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 	 */
 	if (port->flags & ASYNC_INITIALIZED) {
 		unsigned long flags;
-		spin_lock_irqsave(&uport->lock, flags);
+		raw_spin_lock_irqsave(&uport->lock, flags);
 		uport->ops->stop_rx(uport);
-		spin_unlock_irqrestore(&uport->lock, flags);
+		raw_spin_unlock_irqrestore(&uport->lock, flags);
 		/*
 		 * Before we drop DTR, make sure the UART transmitter
 		 * has completely drained; this is especially
@@ -1341,25 +1341,25 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 	tty_ldisc_flush(tty);
 
 	tty_port_tty_set(port, NULL);
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 	tty->closing = 0;
 
 	if (port->blocked_open) {
-		spin_unlock_irqrestore(&port->lock, flags);
+		raw_spin_unlock_irqrestore(&port->lock, flags);
 		if (port->close_delay)
 			msleep_interruptible(port->close_delay);
-		spin_lock_irqsave(&port->lock, flags);
+		raw_spin_lock_irqsave(&port->lock, flags);
 	} else if (!uart_console(uport)) {
-		spin_unlock_irqrestore(&port->lock, flags);
+		raw_spin_unlock_irqrestore(&port->lock, flags);
 		uart_change_pm(state, 3);
-		spin_lock_irqsave(&port->lock, flags);
+		raw_spin_lock_irqsave(&port->lock, flags);
 	}
 
 	/*
 	 * Wake up anyone trying to open this port.
 	 */
 	clear_bit(ASYNCB_NORMAL_ACTIVE, &port->flags);
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 	wake_up_interruptible(&port->open_wait);
 
 done:
@@ -1448,10 +1448,10 @@ static void uart_hangup(struct tty_struct *tty)
 	if (port->flags & ASYNC_NORMAL_ACTIVE) {
 		uart_flush_buffer(tty);
 		uart_shutdown(tty, state);
-		spin_lock_irqsave(&port->lock, flags);
+		raw_spin_lock_irqsave(&port->lock, flags);
 		port->count = 0;
 		clear_bit(ASYNCB_NORMAL_ACTIVE, &port->flags);
-		spin_unlock_irqrestore(&port->lock, flags);
+		raw_spin_unlock_irqrestore(&port->lock, flags);
 		tty_port_tty_set(port, NULL);
 		wake_up_interruptible(&port->open_wait);
 		wake_up_interruptible(&port->delta_msr_wait);
@@ -1464,10 +1464,10 @@ static int uart_carrier_raised(struct tty_port *port)
 	struct uart_state *state = container_of(port, struct uart_state, port);
 	struct uart_port *uport = state->uart_port;
 	int mctrl;
-	spin_lock_irq(&uport->lock);
+	raw_spin_lock_irq(&uport->lock);
 	uport->ops->enable_ms(uport);
 	mctrl = uport->ops->get_mctrl(uport);
-	spin_unlock_irq(&uport->lock);
+	raw_spin_unlock_irq(&uport->lock);
 	if (mctrl & TIOCM_CAR)
 		return 1;
 	return 0;
@@ -1635,9 +1635,9 @@ static void uart_line_info(struct seq_file *m, struct uart_driver *drv, int i)
 		pm_state = state->pm_state;
 		if (pm_state)
 			uart_change_pm(state, 0);
-		spin_lock_irq(&uport->lock);
+		raw_spin_lock_irq(&uport->lock);
 		status = uport->ops->get_mctrl(uport);
-		spin_unlock_irq(&uport->lock);
+		raw_spin_unlock_irq(&uport->lock);
 		if (pm_state)
 			uart_change_pm(state, pm_state);
 		mutex_unlock(&port->mutex);
@@ -1825,7 +1825,7 @@ uart_set_options(struct uart_port *port, struct console *co,
 	 * Ensure that the serial console lock is initialised
 	 * early.
 	 */
-	spin_lock_init(&port->lock);
+	raw_spin_lock_init(&port->lock);
 	lockdep_set_class(&port->lock, &port_lock_key);
 
 	memset(&termios, 0, sizeof(struct ktermios));
@@ -1931,11 +1931,11 @@ int uart_suspend_port(struct uart_driver *drv, struct uart_port *uport)
 			set_bit(ASYNCB_SUSPENDED, &port->flags);
 			clear_bit(ASYNCB_INITIALIZED, &port->flags);
 
-			spin_lock_irq(&uport->lock);
+			raw_spin_lock_irq(&uport->lock);
 			ops->stop_tx(uport);
 			ops->set_mctrl(uport, 0);
 			ops->stop_rx(uport);
-			spin_unlock_irq(&uport->lock);
+			raw_spin_unlock_irq(&uport->lock);
 		}
 
 		/*
@@ -2016,9 +2016,9 @@ int uart_resume_port(struct uart_driver *drv, struct uart_port *uport)
 		int ret;
 
 		uart_change_pm(state, 0);
-		spin_lock_irq(&uport->lock);
+		raw_spin_lock_irq(&uport->lock);
 		ops->set_mctrl(uport, 0);
-		spin_unlock_irq(&uport->lock);
+		raw_spin_unlock_irq(&uport->lock);
 		if (console_suspend_enabled || !uart_console(uport)) {
 			/* Protected by port mutex for now */
 			struct tty_struct *tty = port->tty;
@@ -2026,10 +2026,10 @@ int uart_resume_port(struct uart_driver *drv, struct uart_port *uport)
 			if (ret == 0) {
 				if (tty)
 					uart_change_speed(tty, state, NULL);
-				spin_lock_irq(&uport->lock);
+				raw_spin_lock_irq(&uport->lock);
 				ops->set_mctrl(uport, uport->mctrl);
 				ops->start_tx(uport);
-				spin_unlock_irq(&uport->lock);
+				raw_spin_unlock_irq(&uport->lock);
 				set_bit(ASYNCB_INITIALIZED, &port->flags);
 			} else {
 				/*
@@ -2124,9 +2124,9 @@ uart_configure_port(struct uart_driver *drv, struct uart_state *state,
 		 * keep the DTR setting that is set in uart_set_options()
 		 * We probably don't need a spinlock around this, but
 		 */
-		spin_lock_irqsave(&port->lock, flags);
+		raw_spin_lock_irqsave(&port->lock, flags);
 		port->ops->set_mctrl(port, port->mctrl & TIOCM_DTR);
-		spin_unlock_irqrestore(&port->lock, flags);
+		raw_spin_unlock_irqrestore(&port->lock, flags);
 
 		/*
 		 * If this driver supports console, and it hasn't been
@@ -2379,7 +2379,7 @@ int uart_add_one_port(struct uart_driver *drv, struct uart_port *uport)
 	 * initialised.
 	 */
 	if (!(uart_console(uport) && (uport->cons->flags & CON_ENABLED))) {
-		spin_lock_init(&uport->lock);
+		raw_spin_lock_init(&uport->lock);
 		lockdep_set_class(&uport->lock, &port_lock_key);
 	}
 

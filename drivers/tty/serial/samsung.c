@@ -89,7 +89,7 @@ static void s3c24xx_serial_rx_enable(struct uart_port *port)
 	unsigned int ucon, ufcon;
 	int count = 10000;
 
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 
 	while (--count && !s3c24xx_serial_txempty_nofifo(port))
 		udelay(100);
@@ -103,7 +103,7 @@ static void s3c24xx_serial_rx_enable(struct uart_port *port)
 	wr_regl(port, S3C2410_UCON, ucon);
 
 	rx_enabled(port) = 1;
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void s3c24xx_serial_rx_disable(struct uart_port *port)
@@ -111,14 +111,14 @@ static void s3c24xx_serial_rx_disable(struct uart_port *port)
 	unsigned long flags;
 	unsigned int ucon;
 
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 
 	ucon = rd_regl(port, S3C2410_UCON);
 	ucon &= ~S3C2410_UCON_RXIRQMODE;
 	wr_regl(port, S3C2410_UCON, ucon);
 
 	rx_enabled(port) = 0;
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void s3c24xx_serial_stop_tx(struct uart_port *port)
@@ -358,7 +358,7 @@ static void s3c24xx_serial_break_ctl(struct uart_port *port, int break_state)
 	unsigned long flags;
 	unsigned int ucon;
 
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 
 	ucon = rd_regl(port, S3C2410_UCON);
 
@@ -369,7 +369,7 @@ static void s3c24xx_serial_break_ctl(struct uart_port *port, int break_state)
 
 	wr_regl(port, S3C2410_UCON, ucon);
 
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void s3c24xx_serial_shutdown(struct uart_port *port)
@@ -395,7 +395,11 @@ static void s3c24xx_serial_shutdown(struct uart_port *port)
 static int s3c24xx_serial_startup(struct uart_port *port)
 {
 	struct s3c24xx_uart_port *ourport = to_ourport(port);
-	int ret;
+	int ret, irqflags = 0;
+
+#ifdef CONFIG_PREEMPT_RT_FULL
+	irqflags = IRQF_NO_THREAD;
+#endif
 
 	dbg("s3c24xx_serial_startup: port=%p (%08lx,%p)\n",
 	    port->mapbase, port->membase);
@@ -752,7 +756,7 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 		ulcon |= S3C2410_LCON_PNONE;
 	}
 
-	spin_lock_irqsave(&port->lock, flags);
+	raw_spin_lock_irqsave(&port->lock, flags);
 
 	dbg("setting ulcon to %08x, brddiv to %d, udivslot %08x\n",
 	    ulcon, quot, udivslot);
@@ -796,7 +800,7 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 	if ((termios->c_cflag & CREAD) == 0)
 		port->ignore_status_mask |= RXSTAT_DUMMY_READ;
 
-	spin_unlock_irqrestore(&port->lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static const char *s3c24xx_serial_type(struct uart_port *port)
@@ -912,7 +916,7 @@ static struct uart_driver s3c24xx_uart_drv = {
 static struct s3c24xx_uart_port s3c24xx_serial_ports[CONFIG_SERIAL_SAMSUNG_UARTS] = {
 	[0] = {
 		.port = {
-			.lock		= __SPIN_LOCK_UNLOCKED(s3c24xx_serial_ports[0].port.lock),
+			.lock		= __RAW_SPIN_LOCK_UNLOCKED(s3c24xx_serial_ports[0].port.lock),
 			.iotype		= UPIO_MEM,
 			.irq		= IRQ_S3CUART_RX0,
 			.uartclk	= 0,
@@ -924,7 +928,7 @@ static struct s3c24xx_uart_port s3c24xx_serial_ports[CONFIG_SERIAL_SAMSUNG_UARTS
 	},
 	[1] = {
 		.port = {
-			.lock		= __SPIN_LOCK_UNLOCKED(s3c24xx_serial_ports[1].port.lock),
+			.lock		= __RAW_SPIN_LOCK_UNLOCKED(s3c24xx_serial_ports[1].port.lock),
 			.iotype		= UPIO_MEM,
 			.irq		= IRQ_S3CUART_RX1,
 			.uartclk	= 0,
@@ -938,7 +942,7 @@ static struct s3c24xx_uart_port s3c24xx_serial_ports[CONFIG_SERIAL_SAMSUNG_UARTS
 
 	[2] = {
 		.port = {
-			.lock		= __SPIN_LOCK_UNLOCKED(s3c24xx_serial_ports[2].port.lock),
+			.lock		= __RAW_SPIN_LOCK_UNLOCKED(s3c24xx_serial_ports[2].port.lock),
 			.iotype		= UPIO_MEM,
 			.irq		= IRQ_S3CUART_RX2,
 			.uartclk	= 0,
@@ -952,7 +956,7 @@ static struct s3c24xx_uart_port s3c24xx_serial_ports[CONFIG_SERIAL_SAMSUNG_UARTS
 #if CONFIG_SERIAL_SAMSUNG_UARTS > 3
 	[3] = {
 		.port = {
-			.lock		= __SPIN_LOCK_UNLOCKED(s3c24xx_serial_ports[3].port.lock),
+			.lock		= __RAW_SPIN_LOCK_UNLOCKED(s3c24xx_serial_ports[3].port.lock),
 			.iotype		= UPIO_MEM,
 			.irq		= IRQ_S3CUART_RX3,
 			.uartclk	= 0,
