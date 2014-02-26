@@ -2085,7 +2085,7 @@ static void __init tq210_map_io(void)
 	if (lcd->width > 1280) {
 		tq210_fixup_bootmem(S5P_MDEV_FIMC2, 12288 * SZ_1K);
 	}
-	s5p_reserve_bootmem(tq210_media_devs, ARRAY_SIZE(tq210_media_devs), S5P_RANGE_MFC);
+	//s5p_reserve_bootmem(tq210_media_devs, ARRAY_SIZE(tq210_media_devs), S5P_RANGE_MFC);
 #ifdef CONFIG_MTD_ONENAND
 	s5pc110_device_onenand.name = "s5pc110-onenand";
 #endif
@@ -2108,7 +2108,7 @@ static struct s3c_sdhci_platdata tq210_hsmmc0_pdata __initdata = {
 static struct s3c_sdhci_platdata tq210_hsmmc3_pdata __initdata = {
 	.cd_type				= S3C_SDHCI_CD_PERMANENT,
 	.cfg_gpio				= s5pv210_setup_sdhci3_cfg_gpio,
-};      
+};
 #endif
  
 static void __init smdkc110_setup_clocks(void)
